@@ -63,8 +63,11 @@ jobs:
           path: netbeans
           ref: f48f91e6c197d8a40bd82fc2f2d12a4e71242afe
 
+      - name: Apply NetBeans patches
+        run: ant apply-patches
 
       - name: Build NetBeans
-        run: ant apply-patches \
-             ant build-netbeans \
-             ant build-vsix-ext
+        run: ant build-netbeans
+
+      - name: Build the Visual Studio Extension
+        run: ant build-vscode-ext
