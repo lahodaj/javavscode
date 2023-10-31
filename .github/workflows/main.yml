@@ -37,12 +37,13 @@ jobs:
   # artifact is only produced once in the matrix
   base-build:
     name: Base Build
-    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       matrix:
         java: [ '17' ]
+        os: [ ubuntu-latest, macos-latest ]
       fail-fast: false
+    runs-on: ${{ matrix.os }}
     steps:
 
       - name: Set up JDK ${{ matrix.java }}
