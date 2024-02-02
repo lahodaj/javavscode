@@ -1,3 +1,21 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package org.openjdk.compute.disabled.modules;
 
 import java.io.FileInputStream;
@@ -5,6 +23,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -58,11 +78,8 @@ public class ComputeRequiredModules implements ArgsProcessor {
             "org.netbeans.modules.editor.mimelookup.impl", //so that MimeLookup from layers works
             "org.netbeans.modules.lexer.nbbridge", //so that lexer(s) work
             "org.netbeans.modules.java.j2seplatform", //so that JRT FS works
-"org.netbeans.modules.masterfs.linux",
-"org.netbeans.modules.masterfs.macosx",
-"org.netbeans.modules.masterfs.nio2",
-"org.netbeans.modules.masterfs.ui",
-"org.netbeans.modules.masterfs.windows"
+            "org.netbeans.modules.masterfs.nio2", //listening on FS
+            "org.netbeans.modules.masterfs.ui", //filesystem
         };
         Set<String> rootModulesSet = new HashSet<>(Arrays.asList(rootModules));
         Set<ModuleInfo> todo = new HashSet<>();
@@ -113,7 +130,9 @@ public class ComputeRequiredModules implements ArgsProcessor {
                         case Dependency.TYPE_NEEDS:
                             if (seenNeeds.add(d.getName())) {
                                 Set<String> fullfillingModules = capability2Modules.get(d.getName());
-                                if (fullfillingModules.size() == 1) {
+                                if (fullfillingModules == null) {
+                                    System.err.println("module: " + currentModule.getCodeNameBase() + ", needs capability: '" + d.getName() + "', but there are no modules providing this capability");
+                                } else if (fullfillingModules.size() == 1) {
                                     todo.add(codeNameBase2ModuleInfo.get(fullfillingModules.iterator().next()));
                                 } else {
                                     System.err.println("module: " + currentModule.getCodeNameBase() + ", needs capability: '" + d.getName() + "', modules that provide that capability are: " + fullfillingModules);
@@ -123,7 +142,9 @@ public class ComputeRequiredModules implements ArgsProcessor {
                         case Dependency.TYPE_REQUIRES:
                             if (seenRequires.add(d.getName())) {
                                 Set<String> fullfillingModules = capability2Modules.get(d.getName());
-                                if (fullfillingModules.size() == 1) {
+                                if (fullfillingModules == null) {
+                                    System.err.println("module: " + currentModule.getCodeNameBase() + ", needs capability: '" + d.getName() + "', but there are no modules providing this capability");
+                                } else if (fullfillingModules.size() == 1) {
                                     todo.add(codeNameBase2ModuleInfo.get(fullfillingModules.iterator().next()));
                                 } else {
                                     System.err.println("module: " + currentModule.getCodeNameBase() + ", requires capability: '" + d.getName() + "', modules that provide that capability are: " + fullfillingModules);
@@ -149,8 +170,10 @@ public class ComputeRequiredModules implements ArgsProcessor {
         String disabledModules = codeNameBase2ModuleInfo.keySet().stream().filter(cnbb -> !requiredCNBBases.contains(cnbb)).collect(Collectors.joining(","));
         EditableProperties props = new EditableProperties(false);
 
-        try (InputStream in = new FileInputStream(targetProperties)) {
-            props.load(in);
+        if (Files.isReadable(Paths.get(targetProperties))) {
+            try (InputStream in = new FileInputStream(targetProperties)) {
+                props.load(in);
+            }
         }
 
         props.put("disabled.modules", disabledModules);
