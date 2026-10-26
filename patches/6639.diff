@@ -1,0 +1,706 @@
+diff --git a/platform/masterfs/apichanges.xml b/platform/masterfs/apichanges.xml
+index 85880c4782c7..31cc03064ce1 100644
+--- a/platform/masterfs/apichanges.xml
++++ b/platform/masterfs/apichanges.xml
+@@ -19,12 +19,25 @@
+     under the License.
+ 
+ -->
+-<!DOCTYPE apichanges PUBLIC "-//NetBeans//DTD API changes list 1.0//EN" "../../nbbuild/javadoctools/apichanges.dtd">
++<!DOCTYPE apichanges PUBLIC "-//NetBeans//DTD API changes list 1.1//EN" "../../nbbuild/javadoctools/apichanges-1.1.dtd">
+ <apichanges>
+     <apidefs>
+         <apidef name="masterfs">MasterFileSystem API</apidef>
+     </apidefs>
+     <changes>
++        <change id="disable.hard.locks">
++            <api name="masterfs"/>
++            <summary>Adding ability to disable hard-locks as files</summary>
++            <version major="2" minor="91"/>
++            <date day="26" month="10" year="2026"/>
++            <author login="jlahoda"/>
++            <compatibility binary="compatible" source="compatible" deletion="no"/>
++            <description>
++                Adding an ability to disable hard-locks using files on the file system.
++                See <a href="@TOP@/architecture-summary.html#lookup-disable.LCK.files">the API usecase.</a>
++            </description>
++            <class package="org.netbeans.modules.masterfs.fileobjects" name="HardLockRegistry"/>
++        </change>
+         <change id="image.for.files">
+             <api name="masterfs"/>
+             <summary>Split image handling into UI module</summary>
+diff --git a/platform/masterfs/arch.xml b/platform/masterfs/arch.xml
+index 73fc88cadb22..d78bc163c78b 100644
+--- a/platform/masterfs/arch.xml
++++ b/platform/masterfs/arch.xml
+@@ -112,6 +112,13 @@ cases. FileObjects erlier returned from <code>URLMapper</code> or
+ <code>CvsFileSystem</code> will be now provided by <code>MasterFileSystem</code>. 
+ There will be guaranteed that there won't be more instances of FileObject 
+ addressing one <code>java.ioFile</code>.
++<p><api name="disable.LCK.files" group="lookup" type="export" category="devel">
++To disable hard locks as on-disk files, remove class <code>org.netbeans.modules.masterfs.filebasedfs.fileobjects.FileBaseHardLockRegistry</code>
++from the global <code>Lookup</code>, e.g. by creating file:
++<code>META-INF/services/org.netbeans.modules.masterfs.filebasedfs.fileobjects.HardLockRegistry</code> with this content:
++<code>#-org.netbeans.modules.masterfs.filebasedfs.fileobjects.FileBaseHardLockRegistry</code>.
++This is an API under development and may be replaced or changed in the future.
++</api></p>
+ </answer>
+ 
+ 
+diff --git a/platform/masterfs/nbproject/project.properties b/platform/masterfs/nbproject/project.properties
+index 38c951309f1b..55cb283ba746 100644
+--- a/platform/masterfs/nbproject/project.properties
++++ b/platform/masterfs/nbproject/project.properties
+@@ -35,7 +35,7 @@ test.config.stableBTD.excludes=\
+     **/SlowRefreshAndPriorityIOTest.class,\
+     **/SlowRefreshSuspendableTest.class,\
+     **/StatFilesTest.class
+-spec.version.base=2.88.0
++spec.version.base=2.91.0
+ 
+ # TODO remove SM usage in tests
+ test.jms.flags=-Djava.security.manager=allow
+diff --git a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/FileBaseHardLockRegistry.java b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/FileBaseHardLockRegistry.java
+new file mode 100644
+index 000000000000..573ecd8df211
+--- /dev/null
++++ b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/FileBaseHardLockRegistry.java
+@@ -0,0 +1,64 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++package org.netbeans.modules.masterfs.filebasedfs.fileobjects;
++
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.nio.file.Files;
++import org.netbeans.modules.masterfs.filebasedfs.utils.FileChangedManager;
++import org.openide.util.Exceptions;
++import org.openide.util.lookup.ServiceProvider;
++
++@ServiceProvider(service = HardLockRegistry.class, position = 100)
++public final class FileBaseHardLockRegistry implements HardLockRegistry {
++
++    public void doHardLock(File hardLock, String absolutePath) throws IOException {
++        hardLock.getParentFile().mkdirs();
++        hardLock.createNewFile();
++        try (OutputStream os = Files.newOutputStream(hardLock.toPath())) {
++            os.write(absolutePath.getBytes());
++        }
++    }
++
++    public boolean doHardUnlock(File hardLock) {
++        return hardLock.delete();
++    }
++
++    public boolean hardLockExists(File hardLock) throws IOException {
++        return FileChangedManager.getInstance().exists(hardLock);
++    }
++
++    public String getHardLockContent(File hardLock) {
++        if (FileChangedManager.getInstance().exists(hardLock)) {
++            try (InputStream is = new FileInputStream(hardLock)) {
++                byte[] path = new byte[is.available()];
++                if (path.length > 0 && is.read(path) == path.length) {
++                    return new String(path);
++                }
++            } catch (IOException ex) {
++                Exceptions.printStackTrace(ex);
++            }
++        }
++        return null;
++    }
++
++}
+diff --git a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/HardLockRegistry.java b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/HardLockRegistry.java
+new file mode 100644
+index 000000000000..b1994a52cb09
+--- /dev/null
++++ b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/HardLockRegistry.java
+@@ -0,0 +1,48 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++package org.netbeans.modules.masterfs.filebasedfs.fileobjects;
++
++import java.io.File;
++import java.io.IOException;
++import org.openide.util.Lookup;
++
++/** A pluggable hard lock handler.
++ * @see <a href="@TOP@/architecture-summary.html#lookup-disable.LCK.files">the API usecase.</a>.
++ */
++public interface HardLockRegistry {
++
++    public static HardLockRegistry getInstance() {
++        return HardLockRegistryInstance.INSTANCE;
++    }
++
++    public void doHardLock(File hardLock, String absolutePath) throws IOException;
++
++    public boolean doHardUnlock(File hardLock);
++
++    public boolean hardLockExists(File hardLock) throws IOException;
++
++    public String getHardLockContent(File hardLock);
++
++}
++
++//init the HardLockRegistry instance lazily:
++final class HardLockRegistryInstance {
++    public static final HardLockRegistry INSTANCE = Lookup.getDefault().lookup(HardLockRegistry.class);
++}
++
+diff --git a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/InMemoryHardLockRegistry.java b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/InMemoryHardLockRegistry.java
+new file mode 100644
+index 000000000000..2dbfcd2d44d6
+--- /dev/null
++++ b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/InMemoryHardLockRegistry.java
+@@ -0,0 +1,67 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++package org.netbeans.modules.masterfs.filebasedfs.fileobjects;
++
++import java.io.File;
++import java.io.IOException;
++import java.nio.file.Path;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.logging.Level;
++import java.util.logging.Logger;
++import org.openide.util.Exceptions;
++import org.openide.util.lookup.ServiceProvider;
++
++@ServiceProvider(service = HardLockRegistry.class, position = 1000)
++public final class InMemoryHardLockRegistry implements HardLockRegistry {
++
++    private static final Logger LOGGER = Logger.getLogger(InMemoryHardLockRegistry.class.getName());
++    private final ConcurrentHashMap<String, String> hardLocks2Content = new ConcurrentHashMap<>();
++
++    private static String getKey(File hardLock) throws IOException {
++        Path realParentPath = hardLock.toPath().getParent().toRealPath();
++        return realParentPath.resolve(hardLock.getName()).toString();
++    }
++
++    public void doHardLock(File hardLock, String absolutePath) throws IOException {
++        hardLocks2Content.put(getKey(hardLock), absolutePath);
++    }
++
++    public boolean doHardUnlock(File hardLock) {
++        try {
++            return hardLocks2Content.remove(getKey(hardLock)) != null;
++        } catch (IOException ex) {
++            LOGGER.log(Level.FINE, null, ex);
++            return false;
++        }
++    }
++
++    public boolean hardLockExists(File hardLock) throws IOException {
++        return hardLocks2Content.containsKey(getKey(hardLock));
++    }
++
++    public String getHardLockContent(File hardLock) {
++        try {
++            return hardLocks2Content.get(getKey(hardLock));
++        } catch (IOException ex) {
++            Exceptions.printStackTrace(ex);
++            return null;
++        }
++    }
++
++}
+diff --git a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFile.java b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFile.java
+index 659ac2c69c5b..f96d94cd07a2 100644
+--- a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFile.java
++++ b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFile.java
+@@ -19,16 +19,11 @@
+ package org.netbeans.modules.masterfs.filebasedfs.fileobjects;
+ 
+ import java.io.File;
+-import java.io.FileInputStream;
+ import java.io.IOException;
+-import java.io.InputStream;
+-import java.io.OutputStream;
+ import java.lang.ref.Reference;
+ import java.lang.ref.WeakReference;
+-import java.nio.file.Files;
+ import java.util.Collection;
+ import java.util.concurrent.ConcurrentHashMap;
+-import org.netbeans.modules.masterfs.filebasedfs.utils.FileChangedManager;
+ import org.netbeans.modules.masterfs.filebasedfs.utils.Utils;
+ import org.openide.filesystems.FileAlreadyLockedException;
+ import org.openide.filesystems.FileLock;
+@@ -43,8 +38,8 @@
+ public class LockForFile extends FileLock {
+ 
+     private static final ConcurrentHashMap<String, Namesakes> name2Namesakes = new ConcurrentHashMap<>();
+-    private static final String PREFIX = ".LCK";
+-    private static final String SUFFIX = "~";
++            static final String PREFIX = ".LCK";
++            static final String SUFFIX = "~";
+     private File file;
+     private File lock;
+     private boolean valid = false;
+@@ -79,7 +74,7 @@ private static LockForFile registerLock(LockForFile result) throws IOException,
+         File file = result.getFile();
+         Namesakes namesakes = new Namesakes();
+         Namesakes oldNamesakes = name2Namesakes.putIfAbsent(file.getName(), namesakes);
+-        if (oldNamesakes != null) { 
++        if (oldNamesakes != null) {
+             namesakes = oldNamesakes;
+         }
+         if (namesakes.putInstance(file, result) == null) {
+@@ -152,18 +147,17 @@ boolean hardLock() throws IOException {
+         if (isHardLocked()) {
+             throw new FileAlreadyLockedException(file.getAbsolutePath());
+         }
++
+         File hardLock = getLock();
+-        hardLock.getParentFile().mkdirs();
+-        hardLock.createNewFile();
+-        try (OutputStream os = Files.newOutputStream(hardLock.toPath())) {
+-            os.write(getFile().getAbsolutePath().getBytes());
+-            return true;
+-        }
++
++        HardLockRegistry.getInstance().doHardLock(hardLock, getFile().getAbsolutePath());
++
++        return true;
+     }
+ 
+     /*not private for tests*/
+     boolean hardUnlock() {
+-        return getLock().delete();
++        return HardLockRegistry.getInstance().doHardUnlock(getLock());
+     }
+ 
+     private static synchronized boolean hardUnlockAll() {
+@@ -194,25 +188,9 @@ public File getFile() {
+     }
+ 
+     public File getHardLock() {
+-        if (FileChangedManager.getInstance().exists(lock)) {
+-            InputStream is = null;
+-            try {
+-                is = new FileInputStream(lock);
+-                byte[] path = new byte[is.available()];
+-                if (path.length > 0 && is.read(path) == path.length) {
+-                    return new File(new String(path));
+-                }
+-            } catch (IOException ex) {
+-                Exceptions.printStackTrace(ex);
+-            } finally {
+-                if (is != null) {
+-                    try {
+-                        is.close();
+-                    } catch (IOException ex) {
+-                        Exceptions.printStackTrace(ex);
+-                    }
+-                }
+-            }
++        String content = HardLockRegistry.getInstance().getHardLockContent(lock);
++        if (content != null) {
++            return new File(content);
+         }
+         return null;
+     }
+@@ -238,7 +216,7 @@ public static File getLockFile(File file) {
+ 
+         final String lckName = sb.toString();
+         final File lck = new File(parentFile, lckName);
+-        return lck;
++        return lck.getAbsoluteFile();
+     }
+ 
+     @Override
+@@ -286,7 +264,7 @@ private void hardLock() throws IOException {
+                 if (reference != null) {
+                     LockForFile lockForFile = reference.get();
+                     if (lockForFile != null) {
+-                        if (!FileChangedManager.getInstance().exists(lockForFile.getLock())) {
++                        if (!HardLockRegistry.getInstance().hardLockExists(lockForFile.getLock())) {
+                             lockForFile.hardLock();
+                         }
+                     }
+@@ -294,4 +272,9 @@ private void hardLock() throws IOException {
+             }
+         }
+     }
++
++    public static boolean hasActiveLockFileSigns(final String filename) {
++        return filename.startsWith(PREFIX) && filename.endsWith(SUFFIX);
++    }
++
+ }
+diff --git a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/WriteLockUtils.java b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/WriteLockUtils.java
+deleted file mode 100644
+index 50c278f091f4..000000000000
+--- a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/WriteLockUtils.java
++++ /dev/null
+@@ -1,91 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one
+- * or more contributor license agreements.  See the NOTICE file
+- * distributed with this work for additional information
+- * regarding copyright ownership.  The ASF licenses this file
+- * to you under the Apache License, Version 2.0 (the
+- * "License"); you may not use this file except in compliance
+- * with the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing,
+- * software distributed under the License is distributed on an
+- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+- * KIND, either express or implied.  See the License for the
+- * specific language governing permissions and limitations
+- * under the License.
+- */
+-
+-package org.netbeans.modules.masterfs.filebasedfs.fileobjects;
+-
+-
+-import java.io.File;
+-import java.io.IOException;
+-import java.nio.ByteBuffer;
+-import java.nio.channels.FileChannel;
+-import org.netbeans.modules.masterfs.filebasedfs.utils.FileChangedManager;
+-import org.openide.util.Exceptions;
+-
+-
+-/**
+- * @author Radek Matous
+- */
+-
+-
+-public class WriteLockUtils {
+-    static final String PREFIX = ".LCK";
+-    static final String SUFFIX = "~";
+-
+-
+-    private WriteLockUtils(){}
+-
+-    public static synchronized boolean hasActiveLockFileSigns(final String filename) {
+-        return filename.startsWith(WriteLockUtils.PREFIX) && filename.endsWith(WriteLockUtils.SUFFIX);
+-    }
+-    
+-    public static synchronized boolean isActiveLockFile(final File file) {
+-        final String name = file.getName();
+-        boolean isActiveLockFile = hasActiveLockFileSigns(name);
+-        if (isActiveLockFile) {
+-            final String newName = name.substring(WriteLockUtils.PREFIX.length(), (name.length() - WriteLockUtils.SUFFIX.length()));
+-            isActiveLockFile = FileChangedManager.getInstance().exists(new File(file.getParentFile(), newName));
+-        }
+-        
+-        return isActiveLockFile;
+-    }
+-    
+-    public static File getAssociatedLockFile(File file)  {
+-        try {
+-            file = file.getCanonicalFile();
+-        } catch (IOException iex) {
+-            Exceptions.printStackTrace(iex);            
+-        }
+-        
+-        final File parentFile = file.getParentFile();
+-        final StringBuilder sb = new StringBuilder();
+-        
+-        sb.append(WriteLockUtils.PREFIX);//NOI18N
+-        sb.append(file.getName());//NOI18N
+-        sb.append(WriteLockUtils.SUFFIX);//NOI18N
+-        
+-        final String lckName = sb.toString();
+-        final File lck = new File(parentFile, lckName);
+-        return lck;
+-    }
+-    
+-    static String getContentOfLckFile(File lckFile, FileChannel channel) throws IOException {
+-        final byte[] readContent = new byte[(int) lckFile.length()];
+-        channel.read(ByteBuffer.wrap(readContent));
+-        
+-        final String retVal = new String(readContent);
+-        return (FileChangedManager.getInstance().exists(new File(retVal))) ? retVal : null;
+-    }
+-    
+-    static String writeContentOfLckFile(final File lck, FileChannel channel) throws IOException {
+-        final String absolutePath = lck.getAbsolutePath();
+-        final ByteBuffer buf = ByteBuffer.wrap(absolutePath.getBytes());
+-        channel.write(buf);
+-        return absolutePath;
+-    }    
+-}
+diff --git a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/utils/FileInfo.java b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/utils/FileInfo.java
+index 3ea439d51f2f..09ae48970cc4 100644
+--- a/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/utils/FileInfo.java
++++ b/platform/masterfs/src/org/netbeans/modules/masterfs/filebasedfs/utils/FileInfo.java
+@@ -22,7 +22,7 @@
+ import java.io.File;
+ import java.io.IOException;
+ import javax.swing.filechooser.FileSystemView;
+-import org.netbeans.modules.masterfs.filebasedfs.fileobjects.WriteLockUtils;
++import org.netbeans.modules.masterfs.filebasedfs.fileobjects.LockForFile;
+ import org.netbeans.modules.masterfs.filebasedfs.naming.FileNaming;
+ import org.netbeans.modules.masterfs.filebasedfs.naming.NamingFactory;
+ import org.openide.filesystems.FileObject;
+@@ -153,7 +153,7 @@ public boolean isConvertibleToFileObject() {
+ 
+     public boolean isSupportedFile() {
+         return (!getFile().getName().equals(".nbattrs") &&
+-                !WriteLockUtils.hasActiveLockFileSigns(getFile().getName()));
++                !LockForFile.hasActiveLockFileSigns(getFile().getName()));
+     }
+     
+     public FileInfo getRoot() {
+diff --git a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/BaseFileObjectTestHid.java b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/BaseFileObjectTestHid.java
+index 4362868d54f4..d9bde82ffdc4 100644
+--- a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/BaseFileObjectTestHid.java
++++ b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/BaseFileObjectTestHid.java
+@@ -41,7 +41,7 @@
+ import org.netbeans.junit.RandomlyFails;
+ import org.netbeans.modules.masterfs.filebasedfs.fileobjects.FileObj;
+ import org.netbeans.modules.masterfs.filebasedfs.fileobjects.FileObjectFactory;
+-import org.netbeans.modules.masterfs.filebasedfs.fileobjects.WriteLockUtils;
++import org.netbeans.modules.masterfs.filebasedfs.fileobjects.TestUtils;
+ import org.openide.filesystems.FileAttributeEvent;
+ import org.openide.filesystems.FileChangeAdapter;
+ import org.openide.filesystems.FileChangeListener;
+@@ -1264,7 +1264,7 @@ public void testLockFileAfterCrash() throws Exception {
+         File testFile = FileUtil.toFile(testFo);
+   
+         
+-        File lockFile = WriteLockUtils.getAssociatedLockFile(testFile);
++        File lockFile = TestUtils.getAssociatedLockFile(testFile);
+         if (!lockFile.exists()) {
+             assertTrue(lockFile.createNewFile());
+         }
+diff --git a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/FolderObjTest.java b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/FolderObjTest.java
+index 872e334c1e9c..056085f868d1 100644
+--- a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/FolderObjTest.java
++++ b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/FolderObjTest.java
+@@ -457,7 +457,7 @@ public void testCreateWriteLock() throws IOException  {
+         final FileObject testRoot = FileBasedFileSystem.getFileObject(getWorkDir());
+         assertNotNull(testRoot);        
+         File file2lock = new File(getWorkDir(),"aa.txt");
+-        File associatedLock = WriteLockUtils.getAssociatedLockFile(file2lock);//NOI18N
++        File associatedLock = TestUtils.getAssociatedLockFile(file2lock);//NOI18N
+         
+         try {            
+             testRoot.createData(associatedLock.getName());
+diff --git a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFileInMemoryTest.java b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFileInMemoryTest.java
+new file mode 100644
+index 000000000000..e99e9c57edbb
+--- /dev/null
++++ b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFileInMemoryTest.java
+@@ -0,0 +1,50 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++package org.netbeans.modules.masterfs.filebasedfs.fileobjects;
++
++import org.netbeans.modules.masterfs.filebasedfs.fileobjects.HardLockRegistry;
++import org.netbeans.modules.masterfs.filebasedfs.fileobjects.InMemoryHardLockRegistry;
++import org.openide.util.Lookup;
++import org.openide.util.lookup.Lookups;
++import org.openide.util.lookup.ProxyLookup;
++
++public class LockForFileInMemoryTest extends LockForFileTest {
++
++    public LockForFileInMemoryTest(String testName) {
++        super(testName);
++    }
++
++    @Override
++    protected void runTest() throws Throwable {
++        Throwable[] exc = new Throwable[1];
++
++        Lookups.executeWith(new ProxyLookup(Lookups.exclude(Lookup.getDefault(), HardLockRegistry.class), Lookups.fixed(new InMemoryHardLockRegistry())), () -> {
++            try {
++                super.runTest();
++            } catch (Throwable t) {
++                exc[0] = t;
++            }
++        });
++
++        if (exc[0] != null) {
++            throw exc[0];
++        }
++    }
++
++}
+diff --git a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFileTest.java b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFileTest.java
+index e694f1787fab..ddbebca518e4 100644
+--- a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFileTest.java
++++ b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/LockForFileTest.java
+@@ -28,6 +28,7 @@
+ import org.netbeans.junit.NbTestCase;
+ import org.netbeans.junit.RandomlyFails;
+ import org.netbeans.modules.masterfs.filebasedfs.FileBasedFileSystem;
++import org.netbeans.modules.masterfs.filebasedfs.fileobjects.HardLockRegistry;
+ import org.openide.filesystems.FileLock;
+ import org.openide.filesystems.FileObject;
+ import org.openide.filesystems.FileUtil;
+@@ -181,16 +182,13 @@ public void testAfterCrashImpl() throws Exception {
+         LockForFile lock = LockForFile.tryLock(testFile);
+         lock.releaseLock();
+         assertFalse(lock.isValid());
+-        File lockFile = lock.getLock();
+-        if (!lockFile.exists()) {
+-            assertTrue(lockFile.createNewFile());
+-        }
+-        assertTrue(lockFile.exists());
++        File hardLock = lock.getLock();
++        HardLockRegistry.getInstance().doHardLock(hardLock, "");
+         lock = LockForFile.tryLock(testFile);
+         try {
+             assertNotNull(lock);
+             assertTrue(lock.isValid());
+-            assertTrue(lockFile.exists());
++            assertTrue(HardLockRegistry.getInstance().hardLockExists(hardLock));
+         } finally {
+             lock.releaseLock();
+         }
+@@ -216,9 +214,9 @@ public void testFinalizeImpl() throws Exception {
+         lock.releaseLock();
+         LOG.info("releaseLock");
+ 
+-        File lockFile = LockForFile.getLockFile(testFile);
+-        LOG.log(Level.INFO, "Get lock file: {0}", lockFile);
+-        assertFalse(lockFile.exists());
++        File hardLock = LockForFile.getLockFile(testFile);
++        LOG.log(Level.INFO, "Get lock file: {0}", hardLock);
++        assertFalse(HardLockRegistry.getInstance().hardLockExists(hardLock));
+         LOG.info("OK");
+     }
+ 
+@@ -253,9 +251,9 @@ public void testLockingAndReleasingLockAfterRename_82170() throws Exception {
+         } catch (IOException ex) {
+         //after rename is still locked and there isn't possible to get other lock
+         }
+-        File lockFile = LockForFile.getLockFile(file);
++        File hardLock = LockForFile.getLockFile(file);
+         lockForFile.releaseLock();
+-        assertFalse(lockFile.exists());//lock file is deleted after releasing lock
++        assertFalse(HardLockRegistry.getInstance().hardLockExists(hardLock));//lock file is deleted after releasing lock
+         LockForFile.tryLock(file);//there is possible to get lock after releasing lock
+     }
+ 
+diff --git a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/StatFilesTest.java b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/StatFilesTest.java
+index e24bd3c4bd14..ef91a0e86738 100644
+--- a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/StatFilesTest.java
++++ b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/StatFilesTest.java
+@@ -61,6 +61,8 @@ protected void setUp() throws java.lang.Exception {
+ 
+         assertTrue(testFile.exists());
+         //init
++        //make sure Utilities is loaded:
++        Utilities.isUnix();
+         FileUtil.toFileObject(testFile);
+         monitor = new StatFiles();
+         System.setSecurityManager(monitor);
+diff --git a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/TestUtils.java b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/TestUtils.java
+index 720c93f016fd..899f8efa20f4 100644
+--- a/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/TestUtils.java
++++ b/platform/masterfs/test/unit/src/org/netbeans/modules/masterfs/filebasedfs/fileobjects/TestUtils.java
+@@ -20,6 +20,7 @@
+ package org.netbeans.modules.masterfs.filebasedfs.fileobjects;
+ 
+ import java.io.File;
++import java.io.IOException;
+ import java.lang.ref.Reference;
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -31,6 +32,7 @@
+ import org.netbeans.modules.masterfs.watcher.Watcher;
+ import org.openide.filesystems.FileObject;
+ import org.openide.filesystems.FileStateInvalidException;
++import org.openide.util.Exceptions;
+ 
+ public class TestUtils {
+     private static final Logger LOG = Logger.getLogger(TestUtils.class.getName());
+@@ -107,4 +109,23 @@ public static Runnable findSlowRefresh(FileObject fo) throws FileStateInvalidExc
+         Assert.assertFalse("Watcher is really disabled", Watcher.isEnabled());
+         return rs;
+     }
++
++    public static File getAssociatedLockFile(File file)  {
++        try {
++            file = file.getCanonicalFile();
++        } catch (IOException iex) {
++            Exceptions.printStackTrace(iex);
++        }
++
++        final File parentFile = file.getParentFile();
++        final StringBuilder sb = new StringBuilder();
++
++        sb.append(LockForFile.PREFIX);//NOI18N
++        sb.append(file.getName());//NOI18N
++        sb.append(LockForFile.SUFFIX);//NOI18N
++
++        final String lckName = sb.toString();
++        final File lck = new File(parentFile, lckName);
++        return lck;
++    }
+ }

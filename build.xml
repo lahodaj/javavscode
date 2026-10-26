@@ -51,6 +51,7 @@
     <loadresource property="patch-files">
         <string>
             patches/6330.diff
+            patches/6639.diff
             patches/7893-draft.diff
             patches/8038-draft.diff
             patches/8460-draft.diff
