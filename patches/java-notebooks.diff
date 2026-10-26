@@ -788,7 +788,7 @@ index 747d151600..bbf1f263d1 100644
      private static final Logger LOG = Logger.getLogger(TextDocumentServiceImpl.class.getName());
      
      private static final String COMMAND_RUN_SINGLE = "nbls.run.single";         // NOI18N
-@@ -307,14 +316,17 @@ public class TextDocumentServiceImpl implements TextDocumentService, LanguageCli
+@@ -307,15 +316,18 @@ public class TextDocumentServiceImpl implements TextDocumentService, LanguageCli
      private static final String NETBEANS_COMPLETION_WARNING_TIME = "completion.warning.time";// NOI18N
      private static final String NETBEANS_JAVA_ON_SAVE_ORGANIZE_IMPORTS = "java.onSave.organizeImports";// NOI18N
      private static final String NETBEANS_CODE_COMPLETION_COMMIT_CHARS = "java.completion.commit.chars";// NOI18N
@@ -797,6 +797,7 @@ index 747d151600..bbf1f263d1 100644
      private static final String NETBEANS_JAVA_COMPLETION_INSERT_TEXT_PARAMS = "completion-insert-text-parameters";// NOI18N
      private static final String URL = "url";// NOI18N
      private static final String INDEX = "index";// NOI18N
+     private static final String SLOT = "slot";// NOI18N
      
      private static final RequestProcessor BACKGROUND_TASKS = new RequestProcessor(TextDocumentServiceImpl.class.getName(), 1, false, false);
      private static final RequestProcessor WORKER = new RequestProcessor(TextDocumentServiceImpl.class.getName(), 1, false, false);
@@ -1002,9 +1003,9 @@ index 747d151600..bbf1f263d1 100644
 +            return CompletableFuture.completedFuture(Collections.emptyList());
 +        }
 +
-         lastCodeActions = new ArrayList<>();
-         AtomicInteger index = new AtomicInteger(0);
- 
+         // shortcut: if the projects are not yet initialized, return empty:
+         if (server.openedProjects().getNow(null) == null) {
+             return CompletableFuture.completedFuture(Collections.emptyList());
 @@ -1261,6 +1389,12 @@ public class TextDocumentServiceImpl implements TextDocumentService, LanguageCli
          if (!client.getNbCodeCapabilities().wantsJavaSupport()) {
              return CompletableFuture.completedFuture(Collections.emptyList());
