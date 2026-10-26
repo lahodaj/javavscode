@@ -47,7 +47,7 @@ jobs:
     steps:
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: oracle-actions/setup-java@v1
+        uses: oracle-actions/setup-java@f3824d4318f2a98c9f03a628511725610afd5d2a
         with:
           release: ${{ matrix.java }}
 
