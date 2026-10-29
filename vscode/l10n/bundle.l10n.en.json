@@ -81,6 +81,7 @@
   "jdk.extension.lspServer.statusBar.message.launching": "Launching {SERVER_NAME} with {requiredJdk} and userdir {userdir}",
   "jdk.extension.lspServer.warning_message.serverExited": "{SERVER_NAME} exited with {code}",
   "jdk.extension.lspServer.message.noJdkFound": "No JDK found!",
+  "jdk.extension.lspServer.message.jdkWrongVersion": "JDK {JDK_VERSION} required to run the extension.",
   "jdk.extension.lspServer.label.downloadAndSetup": "Download JDK and setup automatically",
   "jdk.extension.lspServer.error_message": "Error initializing {reason}",
   "jdk.extension.nbjavac.message.supportedVersionRequired": "Supported version of javac needed. Please either enable the nb-javac library, or use JDK 27+",

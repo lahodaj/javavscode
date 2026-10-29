@@ -84,14 +84,19 @@ const processOnDataHandler = (nbProcessManager: NbProcessManager, text: string, 
 
 const processOnCloseHandler = (nbProcessManager: NbProcessManager, code: number): string | null => {
     const globalnbProcessManager = globalState.getNbProcessManager();
+    let canPrintFailedWarning: boolean = false;
     if (globalnbProcessManager == nbProcessManager) {
         globalState.setNbProcessManager(null);
-        if (code && code != 0) {
-            window.showWarningMessage(l10n.value("jdk.extension.lspServer.warning_message.serverExited", { SERVER_NAME: extConstants.SERVER_NAME, code }));
-        }
+        canPrintFailedWarning = true;
     }
+    let match;
     if (nbProcessManager.getStdErr()?.match(/Cannot find java/) || (os.type() === NODE_WINDOWS_LABEL && !globalState.isDeactivated())) {
-        jdkDownloaderPrompt();
+        jdkDownloaderPrompt(l10n.value("jdk.extension.lspServer.message.noJdkFound"));
+    } else if (match = nbProcessManager.getStdErr()?.match(/Cannot run on older versions of Java than Java ([0-9]+)./)) {
+        const requiredVersion = match[1];
+        jdkDownloaderPrompt(l10n.value("jdk.extension.lspServer.message.jdkWrongVersion", {JDK_VERSION: requiredVersion}));
+    } else if (canPrintFailedWarning && code && code != 0) {
+        window.showWarningMessage(l10n.value("jdk.extension.lspServer.warning_message.serverExited", { SERVER_NAME: extConstants.SERVER_NAME, code }));
     }
     if (nbProcessManager.getStdOut() != null) {
         let match = nbProcessManager.getStdOut()!.match(/org.netbeans.modules.java.lsp.server[^\n]*/)

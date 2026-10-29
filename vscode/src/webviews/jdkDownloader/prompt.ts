@@ -16,10 +16,10 @@
 import { commands, window } from "vscode";
 import { l10n } from "../../localiser";
 
-export const jdkDownloaderPrompt = () => {
+export const jdkDownloaderPrompt = (message: string) => {
     const downloadAndSetupActionLabel = l10n.value("jdk.extension.lspServer.label.downloadAndSetup")
     window.showInformationMessage(
-        l10n.value("jdk.extension.lspServer.message.noJdkFound"),
+        message,
         downloadAndSetupActionLabel
     ).then(selection => {
         if (selection === downloadAndSetupActionLabel) {
