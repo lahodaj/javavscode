@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        java: [ '21' ]
+        java: [ '25' ]
         os: [ ubuntu-latest ]
       fail-fast: false
     runs-on: ${{ matrix.os }}
@@ -59,6 +59,19 @@ jobs:
 
       - name: Apply NetBeans patches
         run: ant apply-patches
+
+      - name: Download dependencies
+        run: |
+            mkdir $HOME/.hgexternalcache
+            cat netbeans/*/*/external/binaries-list | grep -v '^#' | grep -v '^$' | grep -v ':' | while read line ; do
+                 SHA1=`echo $line | cut -d ' ' -f 1`
+                 BINARY=`echo $line | cut -d ' ' -f 2 | cut -d '#' -f 1`
+                 wget -O "$SHA1-$BINARY" https://netbeans.osuosl.org/binaries/"$SHA1-$BINARY"
+                 echo "$SHA1 "$SHA1-$BINARY"" >checksum
+                 sha1sum --check --strict checksum || exit 1
+                 rm checksum
+                 mv "$SHA1-$BINARY" $HOME/.hgexternalcache/
+             done
 
       - name: Build NetBeans
         run: ant build-netbeans
