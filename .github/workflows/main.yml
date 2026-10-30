@@ -69,7 +69,7 @@ jobs:
                  echo "$SHA1 $BINARY" >checksum
                  sha1sum --check checksum || exit 1
                  rm checksum
-                 mv $BINARY $HOME/.hgexternalbinaries/
+                 mv $BINARY $HOME/.hgexternalcache/
              done
 
       - name: Build NetBeans
