@@ -62,6 +62,7 @@ jobs:
 
       - name: Download dependencies
         run: |
+            mkdir $HOME/.hgexternalcache
             cat netbeans/*/*/external/binaries-list | grep -v '^#' | grep -v '^$' | grep -v ':' | while read line ; do
                  SHA1=`echo $line | cut -d ' ' -f 1`
                  BINARY=`echo $line | cut -d ' ' -f 2 | cut -d '#' -f 1`
